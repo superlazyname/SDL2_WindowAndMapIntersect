@@ -54,6 +54,8 @@ struct TestTextures_t
     SDL_Texture* South;
     SDL_Texture* SouthWest;
     SDL_Texture* West;
+    SDL_Texture* AllIn;
+    SDL_Texture* AllOut;
 };
 
 // Constants
@@ -577,6 +579,9 @@ void Render(void)
     IntVec2_t southWestRegion = {426, 420};
     IntVec2_t westRegion = {413, 361};
 
+    IntVec2_t allInRegion = {482, 356};
+    IntVec2_t allOutRegion = {364, 308};
+
     DrawWindowRegion(cWindowSize, northWestRegion);
     DrawWindowRegion(cWindowSize, northRegion);
     DrawWindowRegion(cWindowSize, northEastRegion);
@@ -587,6 +592,9 @@ void Render(void)
     DrawWindowRegion(cWindowSize, southWestRegion);
     DrawWindowRegion(cWindowSize, westRegion);
 
+    DrawWindowRegion(cWindowSize, allInRegion);
+    DrawWindowRegion(cWindowSize, allOutRegion);
+
     RenderWindow(TestTextures.NorthWest, cWindowSize, northWestRegion, {356, 243});
     RenderWindow(TestTextures.North, cWindowSize, northRegion, {475, 243});
     RenderWindow(TestTextures.NorthEast, cWindowSize, northEastRegion, {579, 263});
@@ -596,6 +604,9 @@ void Render(void)
     RenderWindow(TestTextures.South, cWindowSize, southRegion, {468, 490});
     RenderWindow(TestTextures.SouthWest, cWindowSize, southWestRegion, {361, 463});
     RenderWindow(TestTextures.West, cWindowSize, westRegion, {323, 356});
+
+    RenderWindow(TestTextures.AllIn, cWindowSize, allInRegion, {253, 300});
+    RenderWindow(TestTextures.AllOut, cWindowSize, allOutRegion, {253, 343});
 
     SDL_RenderPresent(SDLGlobals.Renderer);
 }
@@ -638,7 +649,10 @@ void RenderTest()
     TestTextures.SouthEast = SDL_CreateTexture(SDLGlobals.Renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, cWindowSize.X, cWindowSize.Y);;
     TestTextures.South = SDL_CreateTexture(SDLGlobals.Renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, cWindowSize.X, cWindowSize.Y);
     TestTextures.SouthWest = SDL_CreateTexture(SDLGlobals.Renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, cWindowSize.X, cWindowSize.Y);
-    TestTextures.West = SDL_CreateTexture(SDLGlobals.Renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, cWindowSize.X, cWindowSize.Y);;
+    TestTextures.West = SDL_CreateTexture(SDLGlobals.Renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, cWindowSize.X, cWindowSize.Y);
+
+    TestTextures.AllIn = SDL_CreateTexture(SDLGlobals.Renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, cWindowSize.X, cWindowSize.Y);
+    TestTextures.AllOut = SDL_CreateTexture(SDLGlobals.Renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, cWindowSize.X, cWindowSize.Y);
 
 
     // main loop
@@ -666,6 +680,9 @@ void RenderTest()
     SDL_DestroyTexture(TestTextures.South);
     SDL_DestroyTexture(TestTextures.SouthWest);
     SDL_DestroyTexture(TestTextures.West);
+
+    SDL_DestroyTexture(TestTextures.AllIn);
+    SDL_DestroyTexture(TestTextures.AllOut);
 
     TestTextures = {0};
 
