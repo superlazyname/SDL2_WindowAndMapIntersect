@@ -143,7 +143,10 @@ bool PointInRect(const IntVec2_t& point, const IntVec2_t& rectTopLeft, const Int
     return bInRect;
 }
 
-// you really need to see this drawn out on a sheet of paper to best understand this to be honest
+// You really need to see this drawn out on a sheet of paper to best understand this to be honest
+// see scanned png hand written pages in this folder.
+//
+// Returns a value that represents the window's positioning; This value tells you if the window hangs off the corner of the map, the sides, or neither.
 WindowIntersectType_t GetWindowIntersectType(const IntVec2_t& mapSize, const IntVec2_t& windowNorthWestCorner, const IntVec2_t& windowSize_px)
 {
     const IntVec2_t windowNorthEastCorner = {windowNorthWestCorner.X + windowSize_px.X, windowNorthWestCorner.Y + 0};
@@ -208,6 +211,8 @@ WindowIntersectType_t GetWindowIntersectType(const IntVec2_t& mapSize, const Int
 
 }
 
+// See scanned png hand written pages in this folder.
+// Returns a rectangle (top left corner in map coordinates) containing the dimensions of the map to copy into the window.
 SDL_Rect GetMapRenderRectangle(const IntVec2_t& mapSize_px, const IntVec2_t& windowNorthWestCorner_px, const IntVec2_t& windowSize_px)
 {
 
@@ -467,6 +472,7 @@ void DrawTexture(SDL_Texture *texture, const IntVec2_t& textureSize, const IntVe
     SDL_RenderCopy(SDLGlobals.Renderer, texture, &textureRectangle, &screenRectangle);
 }
 
+// draws a magenta outline around the area that we're using as a window over the map
 void DrawWindowRegion(const IntVec2_t& testWindowSize, const IntVec2_t& windowTopLeft)
 {
     SDL_Rect rect = {0};
@@ -475,11 +481,12 @@ void DrawWindowRegion(const IntVec2_t& testWindowSize, const IntVec2_t& windowTo
     rect.w = testWindowSize.X;
     rect.h = testWindowSize.Y;
 
-    SDL_SetRenderDrawColor(SDLGlobals.Renderer, 255,0,255, 255);
+    SDL_SetRenderDrawColor(SDLGlobals.Renderer, 255, 0,255, 255);
 
     SDL_RenderDrawRect(SDLGlobals.Renderer, &rect);
 }
 
+// See scanned png hand written pages in this folder
 IntVec2_t GetDrawRenderOffset(const IntVec2_t& windowTopLeft, const WindowIntersectType_t& intersectType)
 {
     switch(intersectType)
@@ -523,6 +530,7 @@ IntVec2_t GetDrawRenderOffset(const IntVec2_t& windowTopLeft, const WindowInters
     }
 }
 
+// Render what a simulated window would see, if its top left corner were placed at a certain position in the map
 void RenderWindow(SDL_Texture* renderToTexture, const IntVec2_t& testWindowSize, const IntVec2_t& windowTopLeft, const IntVec2_t& screenRenderPoint)
 {
     const IntVec2_t relToMap_WindowTopLeft = {windowTopLeft.X - cMapOrigin.X, windowTopLeft.Y- cMapOrigin.Y };
@@ -530,28 +538,29 @@ void RenderWindow(SDL_Texture* renderToTexture, const IntVec2_t& testWindowSize,
 
     SDL_SetRenderTarget(SDLGlobals.Renderer, renderToTexture);
 
-    // use this orangish color to simulate a sky texture or background color
+    // I'm using this orangish color to simulate a sky texture or background color.
     SDL_SetRenderDrawColor(SDLGlobals.Renderer, 255, 180, 0, 255);
     SDL_RenderClear(SDLGlobals.Renderer);
 
     const WindowIntersectType_t intersectType = GetWindowIntersectType(MapTextureSize, relToMap_WindowTopLeft, testWindowSize);
 
-    const IntVec2_t renderDrawOffset = GetDrawRenderOffset(relToMap_WindowTopLeft, intersectType);
+    if(WindowIntersectType_t::TotallyOut != intersectType)
+    {
+        const IntVec2_t renderDrawOffset = GetDrawRenderOffset(relToMap_WindowTopLeft, intersectType);
 
-    SDL_Rect destRect = {0};
-    destRect.x = renderDrawOffset.X;
-    destRect.y = renderDrawOffset.Y;
-    destRect.w = textureRect.w;
-    destRect.h = textureRect.h;
+        SDL_Rect destRect = {0};
+        destRect.x = renderDrawOffset.X;
+        destRect.y = renderDrawOffset.Y;
+        destRect.w = textureRect.w;
+        destRect.h = textureRect.h;
 
-    SDL_RenderCopy(SDLGlobals.Renderer, MapTestTexture, &textureRect, &destRect);
+        SDL_RenderCopy(SDLGlobals.Renderer, MapTestTexture, &textureRect, &destRect);
+    }
 
-    // need to have one texture per window, probably preallocate
-
-    // now set the render target back to the screen
+    // Now set the render target back to the screen
     SDL_SetRenderTarget(SDLGlobals.Renderer, nullptr);
 
-    // then copy the texture to the screen
+    // Then copy the texture to the screen
     SDL_Rect screenRenderRect = {0};
     screenRenderRect.x = screenRenderPoint.X;
     screenRenderRect.y = screenRenderPoint.Y;
@@ -567,6 +576,7 @@ void Render(void)
     SDL_SetRenderDrawColor(SDLGlobals.Renderer, 0, 40, 60, 255);
     SDL_RenderClear(SDLGlobals.Renderer);
 
+    // Draw the "map"
     DrawTexture(MapTestTexture, MapTextureSize, cMapOrigin);
 
     // in absolute pixels from the top left of our real 1024x768 screen
@@ -582,6 +592,7 @@ void Render(void)
     IntVec2_t allInRegion = {482, 356};
     IntVec2_t allOutRegion = {364, 308};
 
+    // Draw our simulated window regions
     DrawWindowRegion(cWindowSize, northWestRegion);
     DrawWindowRegion(cWindowSize, northRegion);
     DrawWindowRegion(cWindowSize, northEastRegion);
@@ -595,18 +606,19 @@ void Render(void)
     DrawWindowRegion(cWindowSize, allInRegion);
     DrawWindowRegion(cWindowSize, allOutRegion);
 
-    RenderWindow(TestTextures.NorthWest, cWindowSize, northWestRegion, {356, 243});
-    RenderWindow(TestTextures.North, cWindowSize, northRegion, {475, 243});
-    RenderWindow(TestTextures.NorthEast, cWindowSize, northEastRegion, {579, 263});
-    RenderWindow(TestTextures.East, cWindowSize, eastRegion, {606, 358});
+    // Draw what these windows would see
+    RenderWindow(TestTextures.NorthWest,    cWindowSize, northWestRegion,   {356, 243});
+    RenderWindow(TestTextures.North,        cWindowSize, northRegion,       {475, 243});
+    RenderWindow(TestTextures.NorthEast,    cWindowSize, northEastRegion,   {579, 263});
+    RenderWindow(TestTextures.East,         cWindowSize, eastRegion,        {606, 358});
 
-    RenderWindow(TestTextures.SouthEast, cWindowSize, southEastRegion, {595, 480});
-    RenderWindow(TestTextures.South, cWindowSize, southRegion, {468, 490});
-    RenderWindow(TestTextures.SouthWest, cWindowSize, southWestRegion, {361, 463});
-    RenderWindow(TestTextures.West, cWindowSize, westRegion, {323, 356});
+    RenderWindow(TestTextures.SouthEast,    cWindowSize, southEastRegion,   {595, 480});
+    RenderWindow(TestTextures.South,        cWindowSize, southRegion,       {468, 490});
+    RenderWindow(TestTextures.SouthWest,    cWindowSize, southWestRegion,   {361, 463});
+    RenderWindow(TestTextures.West,         cWindowSize, westRegion,        {323, 356});
 
-    RenderWindow(TestTextures.AllIn, cWindowSize, allInRegion, {253, 300});
-    RenderWindow(TestTextures.AllOut, cWindowSize, allOutRegion, {253, 343});
+    RenderWindow(TestTextures.AllIn,        cWindowSize, allInRegion,       {253, 300});
+    RenderWindow(TestTextures.AllOut,       cWindowSize, allOutRegion,      {253, 343});
 
     SDL_RenderPresent(SDLGlobals.Renderer);
 }
@@ -633,7 +645,7 @@ void FrameDelay(unsigned int targetTicks)
     }
 }
 
-void RenderTest()
+void GameRenderLoop()
 {
     // initialization
     SDLGlobals = InitSDL(cScreenResolution);
@@ -690,10 +702,11 @@ void RenderTest()
 
 int main()
 {
+    // For testing whether the core functions are working properly
     DoBasicTests();
 
-    RenderTest();
-   // can just make a texture and copy out of it
+    GameRenderLoop();
+
 
     return 0;
 }
