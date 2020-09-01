@@ -168,7 +168,7 @@ bool PointInRect(const IntVec2_t& point, const IntVec2_t& rectTopLeft, const Int
 // see scanned png hand written pages in this folder.
 //
 // Returns a value that represents the window's positioning; This value tells you if the window hangs off the corner of the map, the sides, or neither.
-WindowIntersectType_t GetWindowIntersectType(const IntVec2_t& mapSize, const IntVec2_t& windowNorthWestCorner, const IntVec2_t& windowSize_px)
+WindowIntersectType_t GetWindowIntersectType(const IntVec2_t& mapSize_px, const IntVec2_t& windowNorthWestCorner, const IntVec2_t& windowSize_px)
 {
     const IntVec2_t windowNorthEastCorner = {windowNorthWestCorner.X + windowSize_px.X, windowNorthWestCorner.Y + 0};
     const IntVec2_t windowSouthWestCorner = {windowNorthWestCorner.X + 0,               windowNorthWestCorner.Y + windowSize_px.Y};
@@ -176,10 +176,10 @@ WindowIntersectType_t GetWindowIntersectType(const IntVec2_t& mapSize, const Int
 
     const IntVec2_t mapTopLeft = {0, 0};
 
-    const bool northWestCornerIn = PointInRect(windowNorthWestCorner, mapTopLeft, mapSize);
-    const bool northEastCornerIn = PointInRect(windowNorthEastCorner, mapTopLeft, mapSize);
-    const bool southWestCornerIn = PointInRect(windowSouthWestCorner, mapTopLeft, mapSize);
-    const bool southEastCornerIn = PointInRect(windowSouthEastCorner, mapTopLeft, mapSize);
+    const bool northWestCornerIn = PointInRect(windowNorthWestCorner, mapTopLeft, mapSize_px);
+    const bool northEastCornerIn = PointInRect(windowNorthEastCorner, mapTopLeft, mapSize_px);
+    const bool southWestCornerIn = PointInRect(windowSouthWestCorner, mapTopLeft, mapSize_px);
+    const bool southEastCornerIn = PointInRect(windowSouthEastCorner, mapTopLeft, mapSize_px);
     
 
     if(northWestCornerIn && northEastCornerIn && southWestCornerIn && southEastCornerIn)
@@ -508,7 +508,7 @@ void DrawWindowRegion(const IntVec2_t& testWindowSize, const IntVec2_t& windowTo
 }
 
 // See scanned png hand written pages in this folder
-IntVec2_t GetDrawRenderOffset(const IntVec2_t& windowTopLeft, const WindowIntersectType_t& intersectType)
+IntVec2_t GetDrawRenderOffset(const SDL_Rect& srcFromRenderRect, const IntVec2_t& windowSize, const WindowIntersectType_t& intersectType)
 {
     switch(intersectType)
     {
@@ -520,26 +520,58 @@ IntVec2_t GetDrawRenderOffset(const IntVec2_t& windowTopLeft, const WindowInters
 
         case WindowIntersectType_t::NorthWest:
         {
-            return {-windowTopLeft.X, -windowTopLeft.Y};
+            // put it in the bottom right corner
+            IntVec2_t result = {windowSize.X - srcFromRenderRect.w, windowSize.Y - srcFromRenderRect.h};
+            return result;
         }
 
         case WindowIntersectType_t::North:
+        {
+            // put it on the bottom
+            IntVec2_t result = {0, windowSize.Y - srcFromRenderRect.h};
+            return result;
+        }
         case WindowIntersectType_t::NorthEast:
         {
-            return {0, -windowTopLeft.Y};
+            // put it on the bottom
+            IntVec2_t result = {0, windowSize.Y - srcFromRenderRect.h};
+            return result;
         }
 
         case WindowIntersectType_t::East:
-        case WindowIntersectType_t::SouthEast:
-        case WindowIntersectType_t::South:
         {
-            return {0, 0};
+            // leave as is
+            IntVec2_t result = {0,0};
+            return result;
         }
 
+        case WindowIntersectType_t::SouthEast:
+        {
+            // leave as is
+            IntVec2_t result = {0,0};
+            return result;
+        }
+
+        case WindowIntersectType_t::South:
+        {
+            // leave as is
+            IntVec2_t result = {0,0};
+            return result;
+        }
+
+
         case WindowIntersectType_t::SouthWest:
+        {
+            // offset to right
+            IntVec2_t result = {windowSize.X - srcFromRenderRect.w,0};
+            return result;
+        }
+        
         case WindowIntersectType_t::West:
         {
-            return {-windowTopLeft.X, 0};
+            //offset to right
+            IntVec2_t result = {windowSize.X - srcFromRenderRect.w,0};
+            return result;
         }
 
         default:
@@ -599,7 +631,11 @@ SDL_Rect GetTextureReadArea(const IntVec2_t& windowTopLeft_RelToTextureTopLeft, 
     {
         case WindowIntersectType_t::TotallyOut:
         {
-            return {0,0,0,0};
+            SDL_Rect rect = {0,0,0,0};
+
+            // there's really no reason for CheckArea to be in this case, but it's a handy breakpoint location
+            CheckArea(rect, windowSize);
+            return rect;
         }
         case WindowIntersectType_t::TotallyIn:
         {
@@ -614,14 +650,16 @@ SDL_Rect GetTextureReadArea(const IntVec2_t& windowTopLeft_RelToTextureTopLeft, 
             return rect;
         }
 
+        // maybe I can reduce some of this by doing some kind of absolute value for some of the width and height calculations
+
         // very special case, can't be merged with anything
         case WindowIntersectType_t::NorthWest:
         {
             SDL_Rect rect = {0};
             rect.x = 0; // is NOT windowTopLeft_RelToTextureTopLeft.X, which is NOT zero
             rect.y = 0; // is NOT windowTopLeft_RelToTextureTopLeft.Y, which is NOT zero
-            rect.w = windowSize.X - windowTopLeft_RelToTextureTopLeft.X;
-            rect.h = windowSize.Y - windowTopLeft_RelToTextureTopLeft.Y;
+            rect.w = windowSize.X + windowTopLeft_RelToTextureTopLeft.X; // really is plus! windowTopLeft is negative!
+            rect.h = windowSize.Y + windowTopLeft_RelToTextureTopLeft.Y; // really is plus! windowTopLeft is negative!
 
             CheckArea(rect, windowSize);
 
@@ -635,7 +673,7 @@ SDL_Rect GetTextureReadArea(const IntVec2_t& windowTopLeft_RelToTextureTopLeft, 
             rect.x = 0; // can be windowTopLeft_RelToTextureTopLeft.X
             rect.y = 0; // is NOT windowTopLeft_RelToTextureTopLeft.Y, which is NOT zero
             rect.w = windowSize.X;
-            rect.h = windowSize.Y - windowTopLeft_RelToTextureTopLeft.Y;
+            rect.h = windowSize.Y + windowTopLeft_RelToTextureTopLeft.Y; // really is plus! windowTopLeft is negative!
 
             CheckArea(rect, windowSize);
 
@@ -648,20 +686,32 @@ SDL_Rect GetTextureReadArea(const IntVec2_t& windowTopLeft_RelToTextureTopLeft, 
             rect.x = windowTopLeft_RelToTextureTopLeft.X;
             rect.y = 0; // is NOT windowTopLeft_RelToTextureTopLeft.Y, which is NOT zero
             rect.w = windowSize.X - windowTopLeft_RelToTextureTopLeft.X;
-            rect.h = windowSize.Y - windowTopLeft_RelToTextureTopLeft.Y; // for east, windowTopLeft_RelToTexturetopLeft will be 0
+            rect.h = windowSize.Y + windowTopLeft_RelToTextureTopLeft.Y; // for east, windowTopLeft_RelToTexturetopLeft will be 0; really is plus, Y is negative for NE
 
             CheckArea(rect, windowSize);
 
             return rect;
         }
         case WindowIntersectType_t::SouthEast:
-        case WindowIntersectType_t::South:
         {
             SDL_Rect rect = {0};
             rect.x = windowTopLeft_RelToTextureTopLeft.X;
             rect.y = windowTopLeft_RelToTextureTopLeft.Y;
-            rect.w = windowSize.X - windowTopLeft_RelToTextureTopLeft.X;
-            rect.h = windowSize.Y - windowTopLeft_RelToTextureTopLeft.Y;
+            rect.w = cGridSize_px - windowTopLeft_RelToTextureTopLeft.X;
+            rect.h = cGridSize_px - windowTopLeft_RelToTextureTopLeft.Y;
+
+            CheckArea(rect, windowSize);
+
+            return rect;
+        }
+        case WindowIntersectType_t::South:
+        {
+            SDL_Rect rect = {0};
+
+            rect.x = windowTopLeft_RelToTextureTopLeft.X;
+            rect.y = windowTopLeft_RelToTextureTopLeft.Y;
+            rect.w = windowSize.X;
+            rect.h = cGridSize_px - windowTopLeft_RelToTextureTopLeft.Y;
 
             CheckArea(rect, windowSize);
 
@@ -669,13 +719,25 @@ SDL_Rect GetTextureReadArea(const IntVec2_t& windowTopLeft_RelToTextureTopLeft, 
         }
 
         case WindowIntersectType_t::SouthWest:
-        case WindowIntersectType_t::West:
         {
             SDL_Rect rect = {0};
             rect.x = 0; // is NOT windowTopLeft_RelToTextureTopLeft, which is NOT zero
             rect.y = windowTopLeft_RelToTextureTopLeft.Y;
             rect.w = windowSize.X + windowTopLeft_RelToTextureTopLeft.X; // is NOT minus, X is negative, we want to truncate off the part to the left of the texture's bounds
             rect.h = windowSize.Y - windowTopLeft_RelToTextureTopLeft.Y;
+
+            CheckArea(rect, windowSize);
+
+            return rect;
+        }
+
+        case WindowIntersectType_t::West:
+        {
+            SDL_Rect rect = {0};
+            rect.x = 0; // is NOT windowTopLeft_RelToTextureTopLeft, which is NOT zero
+            rect.y = windowTopLeft_RelToTextureTopLeft.Y;
+            rect.w = windowSize.X + windowTopLeft_RelToTextureTopLeft.X; // is NOT minus, X is negative, we want to truncate off the part to the left of the texture's bounds
+            rect.h = windowSize.Y;
 
             CheckArea(rect, windowSize);
 
@@ -798,12 +860,9 @@ void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTextur
     //TODO: this might not be right or useful
     const IntVec2_t relToRenderTexture_WindowTopLeft = {relToMap_WindowTopLeft.X - relToMap_WindowTopLeft.X, relToMap_WindowTopLeft.Y - relToMap_WindowTopLeft.Y};
 
-
-    // oh, it's classifying southeast as northwest, somehow
-    
+    // DON'T use relToRenderTexture for the intersect type! It needs to be relative to the map!
+    const WindowIntersectType_t intersectType = GetWindowIntersectType(MapTextureSize, relToMap_WindowTopLeft, windowSize);
     // TODO: Don't do part of the rendering if it's an "All Out" region
-    const WindowIntersectType_t intersectType = GetWindowIntersectType(cMapRenderTextureSize_px, relToRenderTexture_WindowTopLeft , cMapRenderTextureSize_px);
-
     // This is the northwest most tile coordinate that our region touches.
     const IntVec2_t topLeftValidTile = {max(0, gridCoordOfWindow_TopLeft.X), max(0, gridCoordOfWindow_TopLeft.Y)};
 
@@ -869,9 +928,11 @@ void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTextur
 
         const SDL_Rect srcRect = GetTextureReadArea(validTopLeftTileToRegionTopLeft , windowSize, intersectType);
 
+        const IntVec2_t screenDestOrigin = GetDrawRenderOffset(srcRect, windowSize, intersectType);
+
         SDL_Rect destRect = {0};
-        destRect.x = 0;
-        destRect.y = 0;
+        destRect.x = screenDestOrigin.X;
+        destRect.y = screenDestOrigin.Y;
         destRect.w = srcRect.w;
         destRect.h = srcRect.h;
 
