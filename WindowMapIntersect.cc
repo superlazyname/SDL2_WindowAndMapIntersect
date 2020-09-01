@@ -56,6 +56,7 @@ struct TestTextures_t
     SDL_Texture* West;
     SDL_Texture* AllIn;
     SDL_Texture* AllOut;
+    SDL_Texture* Moveable;
 };
 
 struct Color_t
@@ -107,6 +108,8 @@ IntVec2_t MapTextureSize;
 
 TestTextures_t ScreenRenderTextures;
 TestTextures_t MapRenderTextures;
+
+IntVec2_t MousePosition;
 
 IntVec2_t InquireTextureSize(SDL_Texture* texture)
 {
@@ -470,6 +473,11 @@ int HandleInput()
         {
             return 1;
         }
+        else if(event.type == SDL_MOUSEMOTION)
+        {
+            MousePosition.X = event.motion.x;
+            MousePosition.Y = event.motion.y;
+        }
     }
 
     return 0;
@@ -628,7 +636,7 @@ int min(int a, int b)
 }
 
 // Returns a rectangle showing the area to copy from, to get all of the useful pixels rendered from the map that would be in the player's view
-SDL_Rect GetTextureReadArea(const IntVec2_t& windowTopLeft_RelToTextureTopLeft, const IntVec2_t& windowSize, const WindowIntersectType_t& intersectType)
+SDL_Rect GetTextureReadArea(const IntVec2_t& windowTopLeft_RelToTextureTopLeft, const IntVec2_t& windowSize, const WindowIntersectType_t& intersectType, const SDL_Rect& renderedRectangle)
 {
     // yeah, we do need the offset to be not clamped at 0, because otherwise hit doesn't truncate the northeast case
     const IntVec2_t textureOffset = {max(0, windowTopLeft_RelToTextureTopLeft.X), max(0, windowTopLeft_RelToTextureTopLeft.Y)};
@@ -677,7 +685,7 @@ SDL_Rect GetTextureReadArea(const IntVec2_t& windowTopLeft_RelToTextureTopLeft, 
         case WindowIntersectType_t::North:
         {
             SDL_Rect rect = {0};
-            rect.x = 0; // can be windowTopLeft_RelToTextureTopLeft.X
+            rect.x = windowTopLeft_RelToTextureTopLeft.X;
             rect.y = 0; // is NOT windowTopLeft_RelToTextureTopLeft.Y, which is NOT zero
             rect.w = windowSize.X;
             rect.h = windowSize.Y + windowTopLeft_RelToTextureTopLeft.Y; // really is plus! windowTopLeft is negative!
@@ -687,12 +695,24 @@ SDL_Rect GetTextureReadArea(const IntVec2_t& windowTopLeft_RelToTextureTopLeft, 
             return rect;
         }
         case WindowIntersectType_t::East:
+        {
+            SDL_Rect rect = {0};
+            rect.x = windowTopLeft_RelToTextureTopLeft.X;
+            rect.y = windowTopLeft_RelToTextureTopLeft.Y;
+            rect.w = renderedRectangle.w - windowTopLeft_RelToTextureTopLeft.X;
+            rect.h = windowSize.Y;
+
+            CheckArea(rect, windowSize);
+
+            return rect;
+        }
+        
         case WindowIntersectType_t::NorthEast:
         {
             SDL_Rect rect = {0};
             rect.x = windowTopLeft_RelToTextureTopLeft.X;
             rect.y = 0; // is NOT windowTopLeft_RelToTextureTopLeft.Y, which is NOT zero
-            rect.w = windowSize.X - windowTopLeft_RelToTextureTopLeft.X;
+            rect.w = renderedRectangle.w - windowTopLeft_RelToTextureTopLeft.X;
             rect.h = windowSize.Y + windowTopLeft_RelToTextureTopLeft.Y; // for east, windowTopLeft_RelToTexturetopLeft will be 0; really is plus, Y is negative for NE
 
             CheckArea(rect, windowSize);
@@ -704,8 +724,8 @@ SDL_Rect GetTextureReadArea(const IntVec2_t& windowTopLeft_RelToTextureTopLeft, 
             SDL_Rect rect = {0};
             rect.x = windowTopLeft_RelToTextureTopLeft.X;
             rect.y = windowTopLeft_RelToTextureTopLeft.Y;
-            rect.w = cGridSize_px - windowTopLeft_RelToTextureTopLeft.X;
-            rect.h = cGridSize_px - windowTopLeft_RelToTextureTopLeft.Y;
+            rect.w = renderedRectangle.w - windowTopLeft_RelToTextureTopLeft.X;
+            rect.h = renderedRectangle.h - windowTopLeft_RelToTextureTopLeft.Y;
 
             CheckArea(rect, windowSize);
 
@@ -718,7 +738,7 @@ SDL_Rect GetTextureReadArea(const IntVec2_t& windowTopLeft_RelToTextureTopLeft, 
             rect.x = windowTopLeft_RelToTextureTopLeft.X;
             rect.y = windowTopLeft_RelToTextureTopLeft.Y;
             rect.w = windowSize.X;
-            rect.h = cGridSize_px - windowTopLeft_RelToTextureTopLeft.Y;
+            rect.h = renderedRectangle.h - windowTopLeft_RelToTextureTopLeft.Y;
 
             CheckArea(rect, windowSize);
 
@@ -731,7 +751,7 @@ SDL_Rect GetTextureReadArea(const IntVec2_t& windowTopLeft_RelToTextureTopLeft, 
             rect.x = 0; // is NOT windowTopLeft_RelToTextureTopLeft, which is NOT zero
             rect.y = windowTopLeft_RelToTextureTopLeft.Y;
             rect.w = windowSize.X + windowTopLeft_RelToTextureTopLeft.X; // is NOT minus, X is negative, we want to truncate off the part to the left of the texture's bounds
-            rect.h = windowSize.Y - windowTopLeft_RelToTextureTopLeft.Y;
+            rect.h = renderedRectangle.h - windowTopLeft_RelToTextureTopLeft.Y;
 
             CheckArea(rect, windowSize);
 
@@ -787,7 +807,7 @@ IntVec2_t FindGridCoordinateForPoint(IntVec2_t point, int gridSize)
 }
 
 
-void RenderMapRegion(SDL_Texture* mapRenderTexture, const IntVec2_t& northWestTile, const IntVec2_t southEastTile, const IntVec2_t& mapSize_px)
+SDL_Rect RenderMapRegion(SDL_Texture* mapRenderTexture, const IntVec2_t& northWestTile, const IntVec2_t southEastTile, const IntVec2_t& mapSize_px)
 {
     SDL_SetRenderTarget(SDLGlobals.Renderer, mapRenderTexture);
 
@@ -835,6 +855,8 @@ void RenderMapRegion(SDL_Texture* mapRenderTexture, const IntVec2_t& northWestTi
         //DrawWindowRegion(dimensions_Clamped, {0, 0}, {255, 0, 0});
 
         SDL_SetRenderTarget(SDLGlobals.Renderer, nullptr);
+
+        return renderRectangle;
     }
 }
 
@@ -852,7 +874,7 @@ IntVec2_t DEMO_TextureWindowRegion_RelToTexture(const IntVec2_t& relToMap_Window
     return topLeftOfTextureToRegionTopLeft;
 }
 
-void RenderMapToTexture(SDL_Texture* mapRenderTexture, const IntVec2_t& windowSize, const IntVec2_t& relToMap_WindowTopLeft)
+SDL_Rect RenderMapToTexture(SDL_Texture* mapRenderTexture, const IntVec2_t& windowSize, const IntVec2_t& relToMap_WindowTopLeft)
 {
     const IntVec2_t gridCoordOfWindow_TopLeft = FindGridCoordinateForPoint(relToMap_WindowTopLeft, cGridSize_px);
 
@@ -861,11 +883,13 @@ void RenderMapToTexture(SDL_Texture* mapRenderTexture, const IntVec2_t& windowSi
     const IntVec2_t gridCoordOfWindow_BottomRight = FindGridCoordinateForPoint_RoundUp(windowBottomRight, cGridSize_px);
 
     // render the part of the map the player can see to a texture
-    RenderMapRegion(mapRenderTexture, gridCoordOfWindow_TopLeft, gridCoordOfWindow_BottomRight, MapTextureSize);
+    SDL_Rect renderedRectangle = RenderMapRegion(mapRenderTexture, gridCoordOfWindow_TopLeft, gridCoordOfWindow_BottomRight, MapTextureSize);
+
+    return renderedRectangle;
 
 }
 
-void CopyRenderedMapToScreen(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTexture, const IntVec2_t& relToMap_WindowTopLeft, const IntVec2_t& windowSize)
+void CopyRenderedMapToScreen(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTexture, const IntVec2_t& relToMap_WindowTopLeft, const IntVec2_t& windowSize, const SDL_Rect& renderedRectangle)
 {
     const IntVec2_t gridCoordOfWindow_TopLeft = FindGridCoordinateForPoint(relToMap_WindowTopLeft, cGridSize_px);
 
@@ -889,7 +913,7 @@ void CopyRenderedMapToScreen(SDL_Texture* screenRenderTexture, SDL_Texture* mapR
     const IntVec2_t topLeftValidTileTopLeft_px = {topLeftValidTile.X * cGridSize_px, topLeftValidTile.Y * cGridSize_px};
     const IntVec2_t validTopLeftTileToRegionTopLeft = {relToMap_WindowTopLeft.X - topLeftValidTileTopLeft_px.X, relToMap_WindowTopLeft.Y - topLeftValidTileTopLeft_px.Y};
 
-    const SDL_Rect srcRect = GetTextureReadArea(validTopLeftTileToRegionTopLeft , windowSize, intersectType);
+    const SDL_Rect srcRect = GetTextureReadArea(validTopLeftTileToRegionTopLeft , windowSize, intersectType, renderedRectangle);
 
     const IntVec2_t screenDestOrigin = GetDrawRenderOffset(srcRect, windowSize, intersectType);
 
@@ -911,7 +935,7 @@ void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTextur
     // Though maybe this would be useful outside of this demo, if you wanted to offset where the map was drawn
     const IntVec2_t relToMap_WindowTopLeft = {windowTopLeft_px.X - cMapOrigin.X, windowTopLeft_px.Y- cMapOrigin.Y };
 
-    RenderMapToTexture(mapRenderTexture, windowSize, relToMap_WindowTopLeft);
+    SDL_Rect mapTextureRenderedRectangle = RenderMapToTexture(mapRenderTexture, windowSize, relToMap_WindowTopLeft);
 
     // DEMO ONLY: for the sake of visualization, render the contents of the rendered map texture to the screen, this would not be done in a real game
     {
@@ -940,7 +964,7 @@ void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTextur
         }
     }
 
-    CopyRenderedMapToScreen(screenRenderTexture, mapRenderTexture, relToMap_WindowTopLeft, windowSize);
+    CopyRenderedMapToScreen(screenRenderTexture, mapRenderTexture, relToMap_WindowTopLeft, windowSize, mapTextureRenderedRectangle);
 
     // DEMO ONLY: now copy the part of the mapRenderTexture that contains the map onto the screen (with an orangish background behind it)
     {
@@ -972,8 +996,8 @@ void Render(void)
     IntVec2_t northRegion = {480, 306};
     IntVec2_t northEastRegion = {533, 316};
     IntVec2_t eastRegion = {532, 370};
-    IntVec2_t southEastRegion = {555, 445};
-    IntVec2_t southRegion = {476, 446};
+    IntVec2_t southEastRegion = {534, 426};
+    IntVec2_t southRegion = {476, 427};
     IntVec2_t southWestRegion = {426, 420};
     IntVec2_t westRegion = {413, 361};
 
@@ -993,21 +1017,26 @@ void Render(void)
 
     DEMO_DrawWindowRegion(cWindowSize_px, allInRegion);
     DEMO_DrawWindowRegion(cWindowSize_px, allOutRegion);
+    DEMO_DrawWindowRegion(cWindowSize_px, MousePosition); // moveable region
 
     // Draw what these windows would see
     // note: I had trouble getting the exact coordinates of the upper left hand corners of these regions, may be off by +/- 1 px from what's in layout.xcf
-    RenderWindow(ScreenRenderTextures.NorthWest,    MapRenderTextures.NorthWest,    cWindowSize_px, northWestRegion,    {356, 244},   {301, 192});
-    RenderWindow(ScreenRenderTextures.North,        MapRenderTextures.North,        cWindowSize_px, northRegion,        {476, 245},   {474, 170});
-    RenderWindow(ScreenRenderTextures.NorthEast,    MapRenderTextures.NorthEast,    cWindowSize_px, northEastRegion,    {580, 265},   {649, 208});
-    RenderWindow(ScreenRenderTextures.East,         MapRenderTextures.East,         cWindowSize_px, eastRegion,         {606, 359},   {686, 357});
 
-    RenderWindow(ScreenRenderTextures.SouthEast,    MapRenderTextures.SouthEast,    cWindowSize_px, southEastRegion,    {595, 481},   {651, 537});
-    RenderWindow(ScreenRenderTextures.South,        MapRenderTextures.South,        cWindowSize_px, southRegion,        {468, 491},   {469, 592});
-    RenderWindow(ScreenRenderTextures.SouthWest,    MapRenderTextures.SouthWest,    cWindowSize_px, southWestRegion,    {361, 464},   {316, 525});
-    RenderWindow(ScreenRenderTextures.West,         MapRenderTextures.West,         cWindowSize_px, westRegion,         {323, 358},   {271, 410});
+    //          screen texture (orange)             map render texture (cyan)       window size     region position     map texture render position     screen texture render position
+    RenderWindow(ScreenRenderTextures.NorthWest,    MapRenderTextures.NorthWest,    cWindowSize_px, northWestRegion,    {356, 244},                     {301, 192});
+    RenderWindow(ScreenRenderTextures.North,        MapRenderTextures.North,        cWindowSize_px, northRegion,        {476, 245},                     {474, 170});
+    RenderWindow(ScreenRenderTextures.NorthEast,    MapRenderTextures.NorthEast,    cWindowSize_px, northEastRegion,    {580, 265},                     {649, 208});
+    RenderWindow(ScreenRenderTextures.East,         MapRenderTextures.East,         cWindowSize_px, eastRegion,         {606, 359},                     {686, 357});
 
-    RenderWindow(ScreenRenderTextures.AllIn,        MapRenderTextures.AllIn,        cWindowSize_px, allInRegion,        {164, 278},   {82, 294});
-    RenderWindow(ScreenRenderTextures.AllOut,       MapRenderTextures.AllOut,       cWindowSize_px, allOutRegion,       {164, 337},   {81, 334});
+    RenderWindow(ScreenRenderTextures.SouthEast,    MapRenderTextures.SouthEast,    cWindowSize_px, southEastRegion,    {595, 481},                     {651, 537});
+    RenderWindow(ScreenRenderTextures.South,        MapRenderTextures.South,        cWindowSize_px, southRegion,        {468, 491},                     {469, 592});
+    RenderWindow(ScreenRenderTextures.SouthWest,    MapRenderTextures.SouthWest,    cWindowSize_px, southWestRegion,    {361, 464},                     {316, 525});
+    RenderWindow(ScreenRenderTextures.West,         MapRenderTextures.West,         cWindowSize_px, westRegion,         {323, 358},                     {271, 410});
+
+    RenderWindow(ScreenRenderTextures.AllIn,        MapRenderTextures.AllIn,        cWindowSize_px, allInRegion,        {164, 278},                     {82, 294});
+    RenderWindow(ScreenRenderTextures.AllOut,       MapRenderTextures.AllOut,       cWindowSize_px, allOutRegion,       {164, 337},                     {81, 334});
+
+    RenderWindow(ScreenRenderTextures.AllOut,       MapRenderTextures.AllOut,       cWindowSize_px, MousePosition,      {770, 255},                     {777, 323});
 
     SDL_RenderPresent(SDLGlobals.Renderer);
 }
@@ -1057,6 +1086,7 @@ static TestTextures_t AllocateTestTextures(const IntVec2_t& size)
 
     textures.AllIn      = AllocateTexture(size);
     textures.AllOut     = AllocateTexture(size);
+    textures.Moveable   = AllocateTexture(size);
 
     return textures;
 }
@@ -1075,6 +1105,7 @@ static void FreeTextures(TestTextures_t& textures)
 
     SDL_DestroyTexture(textures.AllIn);
     SDL_DestroyTexture(textures.AllOut);
+    SDL_DestroyTexture(textures.Moveable);
 
     textures = {0};
 }
