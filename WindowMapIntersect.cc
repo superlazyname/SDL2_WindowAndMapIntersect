@@ -785,6 +785,7 @@ IntVec2_t FindGridCoordinateForPoint(IntVec2_t point, int gridSize)
 IntVec2_t RenderMapRegion(SDL_Texture* mapRenderTexture, const IntVec2_t& northWestTile, const IntVec2_t southEastTile, const IntVec2_t& mapSize_px)
 {
     SDL_SetRenderTarget(SDLGlobals.Renderer, mapRenderTexture);
+
     // you should never see this cyan color drawn to the game's screen.
     SDL_SetRenderDrawColor(SDLGlobals.Renderer, 0, 255, 255, 255);
     SDL_RenderClear(SDLGlobals.Renderer);
@@ -795,9 +796,6 @@ IntVec2_t RenderMapRegion(SDL_Texture* mapRenderTexture, const IntVec2_t& northW
     //
     // If you were rendering tiles, you would use the northWestTile and southEastTile coordinates to know the range of tiles that need to be rendered.
 
-    // may need to do all 4 corner extents, actually... otherwise partially in northeast tiles get clipped
-
-
     int eastExtent_Clamped = min((southEastTile.X ) * cGridSize_px, mapSize_px.X);
     int southExtent_Clamped = min((southEastTile.Y)* cGridSize_px, mapSize_px.Y);
     int northExtent_Clamped = max(northWestTile.Y * cGridSize_px, 0);
@@ -806,15 +804,6 @@ IntVec2_t RenderMapRegion(SDL_Texture* mapRenderTexture, const IntVec2_t& northW
     const IntVec2_t northWest_Clamped = {westExtent_Clamped, northExtent_Clamped};
 
     const IntVec2_t dimensions_Clamped = {eastExtent_Clamped - westExtent_Clamped, southExtent_Clamped - northExtent_Clamped};
-/*
-    
-    const IntVec2_t southEastExtent_px = {southEastTile.X * cGridSize_px, southEastTile.Y * cGridSize_px};
-
-    
-    const IntVec2_t southEast_Clamped = {min(southEastExtent_px.X, mapSize_px.X), min(southEastExtent_px.Y, mapSize_px.Y)};
-
-    const IntVec2_t clamped_Dimensions = {southEast_Clamped.X - northWest_Clamped.X, southEast_Clamped.Y - northWest_Clamped.Y};
-    */
 
     SDL_Rect mapSourceRectangle = {0};
     mapSourceRectangle.x = northWest_Clamped.X;
@@ -846,7 +835,14 @@ void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTextur
 {
     // This variable is probably only important for the sake of this demo, if this were in a real game, you would pass in windowTopLeft
     // that was already relative to the top of the map, but since this demo contains more than one render window case, we have to do this offset.
+    //
+    // Though maybe this would be useful outside of this demo, if you wanted to offset where the map was drawn
+    //
+    // Or maybe I should break this up into several functions, assuming that RenderWindow would only be sample code for those functions,
+    // making RenderWindow primarily responsible for copying the textures to the screen at the right global coordinates and not much else.
     const IntVec2_t relToMap_WindowTopLeft = {windowTopLeft_px.X - cMapOrigin.X, windowTopLeft_px.Y- cMapOrigin.Y };
+
+
 
     const IntVec2_t gridCoordOfWindow_TopLeft = FindGridCoordinateForPoint(relToMap_WindowTopLeft, cGridSize_px);
 
@@ -855,26 +851,18 @@ void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTextur
     // if there's even one pixel of the window partially in a tile to the right, that whole tile should be rendered
     const IntVec2_t gridCoordOfWindow_BottomRight = FindGridCoordinateForPoint_RoundUp(windowBottomRight, cGridSize_px);
 
-    const IntVec2_t mapRenderedArea = RenderMapRegion(mapRenderTexture, gridCoordOfWindow_TopLeft, gridCoordOfWindow_BottomRight, MapTextureSize);
-
-    //TODO: this might not be right or useful
-    const IntVec2_t relToRenderTexture_WindowTopLeft = {relToMap_WindowTopLeft.X - relToMap_WindowTopLeft.X, relToMap_WindowTopLeft.Y - relToMap_WindowTopLeft.Y};
+    // render the part of the map the player can see to a texture
+    RenderMapRegion(mapRenderTexture, gridCoordOfWindow_TopLeft, gridCoordOfWindow_BottomRight, MapTextureSize);
 
     // DON'T use relToRenderTexture for the intersect type! It needs to be relative to the map!
     const WindowIntersectType_t intersectType = GetWindowIntersectType(MapTextureSize, relToMap_WindowTopLeft, windowSize);
-    // TODO: Don't do part of the rendering if it's an "All Out" region
+
+    // TODO: Don't do part of the rendering if it's an "All Out" region, still need to copy the background and should wipe the map render texture, though
+
+
     // This is the northwest most tile coordinate that our region touches.
     const IntVec2_t topLeftValidTile = {max(0, gridCoordOfWindow_TopLeft.X), max(0, gridCoordOfWindow_TopLeft.Y)};
 
-    const IntVec2_t topLeftValidTileTopLeft_px = {topLeftValidTile.X * cGridSize_px, topLeftValidTile.Y * cGridSize_px};
-
-    const IntVec2_t topLeftOfNorthWestTile_RelToMap_px = {topLeftValidTile.X * cGridSize_px, topLeftValidTile.Y * cGridSize_px};
-
-    // I wonder if this cancels out topLeftValidTile? Is this necessary?
-    const IntVec2_t mapRenderRegionOffset = {relToMap_WindowTopLeft.X - topLeftOfNorthWestTile_RelToMap_px.X, relToMap_WindowTopLeft.Y - topLeftOfNorthWestTile_RelToMap_px.Y};
-
-    // the region relative to the render texture, this would not be drawn in a real game
-    const IntVec2_t mapRenderRegion = {mapTexRenderPoint.X + mapRenderRegionOffset.X, mapTexRenderPoint.Y + mapRenderRegionOffset.Y};
 
     // Now set the render target back to the screen
     SDL_SetRenderTarget(SDLGlobals.Renderer, nullptr);
@@ -889,15 +877,18 @@ void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTextur
 
         SDL_RenderCopy(SDLGlobals.Renderer, mapRenderTexture, nullptr, &mapRenderRect);
 
+        const IntVec2_t topLeftOfNorthWestTile_RelToMap_px = {topLeftValidTile.X * cGridSize_px, topLeftValidTile.Y * cGridSize_px};
+
+        // I wonder if this cancels out topLeftValidTile? Is this necessary?
+        const IntVec2_t mapRenderRegionOffset = {relToMap_WindowTopLeft.X - topLeftOfNorthWestTile_RelToMap_px.X, relToMap_WindowTopLeft.Y - topLeftOfNorthWestTile_RelToMap_px.Y}; 
+
+         // the region relative to the render texture, this would not be drawn in a real game
+        const IntVec2_t mapRenderRegion = {mapTexRenderPoint.X + mapRenderRegionOffset.X, mapTexRenderPoint.Y + mapRenderRegionOffset.Y};
         DrawWindowRegion(windowSize, mapRenderRegion);
 
     }
 
     // now copy the part of the mapRenderTexture that contains the map onto the screen (with an orangish background behind it)
-
-
-    // TODO: Both the area and offset are wrong with this in some cases
-    // Any with a border on top or left does not show at all
     {
         SDL_SetRenderTarget(SDLGlobals.Renderer, screenRenderTexture);
 
@@ -905,26 +896,8 @@ void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTextur
         SDL_SetRenderDrawColor(SDLGlobals.Renderer, 255, 180, 0, 255);
         SDL_RenderClear(SDLGlobals.Renderer);
 
+        const IntVec2_t topLeftValidTileTopLeft_px = {topLeftValidTile.X * cGridSize_px, topLeftValidTile.Y * cGridSize_px};
         const IntVec2_t validTopLeftTileToRegionTopLeft = {relToMap_WindowTopLeft.X - topLeftValidTileTopLeft_px.X, relToMap_WindowTopLeft.Y - topLeftValidTileTopLeft_px.Y};
-
-        
-
-        // TODO: I don't think this is needed
-        //const SDL_Rect textureRect = GetMapRenderRectangle(cMapRenderTextureSize_px, relToMap_WindowTopLeft, cMapRenderTextureSize_px);
-
-        // note: the offset is not 0, but it should be the distance between the top left tile's top left point and the region's position
-        //      (position inside that top tile)
-        //      
-        //      for north or west textures this needs to be 0, though, because we shove the map pixels at the top of the texture
-        //      no that's only for north and northwest, west should not have its copy coordinate at 0,0.
-        //
-        //      I think this is another thing where the intersection type is important
-
-
-        // mapRenderRegionOffset is not the right thing to use here
-
-        // need something that finds the top right corner of the top leftmost valid tile, and then subtract that tile's top left
-        // corner from the region's coordinates
 
         const SDL_Rect srcRect = GetTextureReadArea(validTopLeftTileToRegionTopLeft , windowSize, intersectType);
 
