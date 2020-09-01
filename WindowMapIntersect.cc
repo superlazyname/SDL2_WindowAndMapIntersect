@@ -494,7 +494,7 @@ void DrawTexture(SDL_Texture *texture, const IntVec2_t& textureSize, const IntVe
 }
 
 // draws a magenta outline around the area that we're using as a window over the map
-void DrawWindowRegion(const IntVec2_t& testWindowSize, const IntVec2_t& windowTopLeft, Color_t color = cMagenta)
+void DEMO_DrawWindowRegion(const IntVec2_t& testWindowSize, const IntVec2_t& windowTopLeft, Color_t color = cMagenta)
 {
     SDL_Rect rect = {0};
     rect.x = windowTopLeft.X;
@@ -787,13 +787,17 @@ IntVec2_t FindGridCoordinateForPoint(IntVec2_t point, int gridSize)
 }
 
 
-
-// Returns the size of the map that was rendered, in pixels
 void RenderMapRegion(SDL_Texture* mapRenderTexture, const IntVec2_t& northWestTile, const IntVec2_t southEastTile, const IntVec2_t& mapSize_px)
 {
     SDL_SetRenderTarget(SDLGlobals.Renderer, mapRenderTexture);
 
-    // you should never see this cyan color drawn to the game's screen.
+    // you should never see this cyan color in this example, because the map has no transparent pixels.
+    // in a real game you may want transparent pixels in the middle of the map to show some background.
+    // 
+    // If you do want that, use
+    //     SDL_SetTextureBlendMode(mapRenderTexture, SDL_BLENDMODE_BLEND);
+    //     SDL_SetRenderDrawColor(SDLGlobals.Renderer, 0, 0, 0, 0);
+    // instead.
     SDL_SetRenderDrawColor(SDLGlobals.Renderer, 0, 255, 255, 255);
     SDL_RenderClear(SDLGlobals.Renderer);
 
@@ -832,7 +836,6 @@ void RenderMapRegion(SDL_Texture* mapRenderTexture, const IntVec2_t& northWestTi
 
         SDL_SetRenderTarget(SDLGlobals.Renderer, nullptr);
     }
-
 }
 
 IntVec2_t DEMO_TextureWindowRegion_RelToTexture(const IntVec2_t& relToMap_WindowTopLeft)
@@ -875,6 +878,11 @@ void CopyRenderedMapToScreen(SDL_Texture* screenRenderTexture, SDL_Texture* mapR
     SDL_SetRenderTarget(SDLGlobals.Renderer, screenRenderTexture);
 
     // I'm using this orangish color to simulate a sky texture or background color.
+    // in a real game you will probably want this to be set to transparent instead, 
+    // If you do want that, use
+    //     SDL_SetTextureBlendMode(screenRenderTexture, SDL_BLENDMODE_BLEND);
+    //     SDL_SetRenderDrawColor(SDLGlobals.Renderer, 0, 0, 0, 0);
+    // instead.
     SDL_SetRenderDrawColor(SDLGlobals.Renderer, 255, 180, 0, 255);
     SDL_RenderClear(SDLGlobals.Renderer);
 
@@ -928,7 +936,7 @@ void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTextur
         // but don't draw the region if the region's completely outside of the map, the offset won't make any sense
         if(intersectType != WindowIntersectType_t::TotallyOut)
         {
-            DrawWindowRegion(windowSize, windowTopLeft_InMapTexture);
+            DEMO_DrawWindowRegion(windowSize, windowTopLeft_InMapTexture);
         }
     }
 
@@ -973,18 +981,18 @@ void Render(void)
     IntVec2_t allOutRegion = {364, 308};
 
     // Draw our simulated window regions
-    DrawWindowRegion(cWindowSize_px, northWestRegion);
-    DrawWindowRegion(cWindowSize_px, northRegion);
-    DrawWindowRegion(cWindowSize_px, northEastRegion);
-    DrawWindowRegion(cWindowSize_px, eastRegion);
+    DEMO_DrawWindowRegion(cWindowSize_px, northWestRegion);
+    DEMO_DrawWindowRegion(cWindowSize_px, northRegion);
+    DEMO_DrawWindowRegion(cWindowSize_px, northEastRegion);
+    DEMO_DrawWindowRegion(cWindowSize_px, eastRegion);
 
-    DrawWindowRegion(cWindowSize_px, southEastRegion);
-    DrawWindowRegion(cWindowSize_px, southRegion);
-    DrawWindowRegion(cWindowSize_px, southWestRegion);
-    DrawWindowRegion(cWindowSize_px, westRegion);
+    DEMO_DrawWindowRegion(cWindowSize_px, southEastRegion);
+    DEMO_DrawWindowRegion(cWindowSize_px, southRegion);
+    DEMO_DrawWindowRegion(cWindowSize_px, southWestRegion);
+    DEMO_DrawWindowRegion(cWindowSize_px, westRegion);
 
-    DrawWindowRegion(cWindowSize_px, allInRegion);
-    DrawWindowRegion(cWindowSize_px, allOutRegion);
+    DEMO_DrawWindowRegion(cWindowSize_px, allInRegion);
+    DEMO_DrawWindowRegion(cWindowSize_px, allOutRegion);
 
     // Draw what these windows would see
     // note: I had trouble getting the exact coordinates of the upper left hand corners of these regions, may be off by +/- 1 px from what's in layout.xcf
