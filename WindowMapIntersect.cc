@@ -102,6 +102,11 @@ const IntVec2_t cMapRenderTextureSize_px = {cMapRenderTextureSize_Tiles.X * cGri
 
 const IntVec2_t cMapOrigin = {432, 322};
 
+constexpr IntVec2_t cTileSetSize_Tiles = {8, 8};
+
+// DEMO: The map size would definitely NOT be the same as the tileset size in a real game
+constexpr IntVec2_t cMapSize_Tiles = cTileSetSize_Tiles;
+
 
 // Globals
 //---------------------------------------------------------------------------------------------------
@@ -117,6 +122,22 @@ TestTextures_t ScreenRenderTextures;
 TestTextures_t MapRenderTextures;
 
 IntVec2_t MousePosition;
+
+
+static inline void CheckArea(const SDL_Rect& offset, const IntVec2_t& windowSize)
+{
+    assert(offset.x >= 0);
+    assert(offset.y >= 0);
+    assert(offset.w >= 0);
+    assert(offset.h >= 0);
+
+    assert(offset.x < windowSize.X);
+    assert(offset.y < windowSize.Y);
+    assert(offset.w <= windowSize.X);
+    assert(offset.h <= windowSize.Y);
+
+}
+
 
 IntVec2_t InquireTextureSize(SDL_Texture* texture)
 {
@@ -386,10 +407,177 @@ SDL_Rect GetMapRenderRectangle(const IntVec2_t& mapSize_px, const IntVec2_t& win
 
 }
 
+int max(int a, int b)
+{
+    if(a > b)
+    {
+        return a;
+    }
+    else
+    {
+        return b;
+    }
+}
+
+int min(int a, int b)
+{
+    if(a < b)
+    {
+        return a;
+    }
+    else
+    {
+        return b;        
+    }
+    
+}
+
+inline int Clamp(int min, int value, int max)
+{
+    if(value < min)
+    {
+        return min;
+    }
+
+    if(value > max)
+    {
+        return max;
+    }
+
+    return value;
+}
+
+inline int InRange(int min, int value, int max)
+{
+    if(value < min)
+    {
+        return false;
+    }
+
+    if(value > max)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+// this is only for the sake of the demo, in a real game you would look up the image 
+// you need to draw from the map
+void DEMO_DrawTile(SDL_Texture* mapRenderTexture, SDL_Texture* tileSetTexture, const IntVec2_t& sourceTileCoordinate_tiles, const IntVec2_t& textureDestCoordinate_tiles)
+{
+    
+
+    assert(InRange(0, sourceTileCoordinate_tiles.X, cTileSetSize_Tiles.X));
+    assert(InRange(0, sourceTileCoordinate_tiles.Y, cTileSetSize_Tiles.Y));
+    
+    assert(InRange(0, textureDestCoordinate_tiles.X, cMapRenderTextureSize_Tiles.X));
+    assert(InRange(0, textureDestCoordinate_tiles.Y, cMapRenderTextureSize_Tiles.Y));
+
+    // in this demo's case, the tileset is the same as the map size, this will certainly NOT be the case in a real game
+
+    const IntVec2_t sourceTilesetCoord_px = {sourceTileCoordinate_tiles.X * cGridSize_px, sourceTileCoordinate_tiles.Y * cGridSize_px};
+
+    // For this partiuclar demo we could reduce the amount of calls to SDL_RenderCopy by copying the entire contiguous area at once,
+    // but this might not be a useful optimization in a real game unless it just so happened that the tileset exactly contained
+    // what was in the player's fov (unlikely unless you rendered the map itself into the tileset, which is not what I have in mind)
+    SDL_Rect srcRect = {0};
+    srcRect.x = sourceTilesetCoord_px.X;
+    srcRect.y = sourceTilesetCoord_px.Y;
+    srcRect.w = cGridSize_px;
+    srcRect.h = cGridSize_px;
+
+    SDL_Rect destRect = {0};
+    destRect.x = textureDestCoordinate_tiles.X * cGridSize_px;
+    destRect.y = textureDestCoordinate_tiles.Y * cGridSize_px;
+    destRect.w = srcRect.w;
+    destRect.h = srcRect.h;
+    
+    SDL_SetRenderTarget(SDLGlobals.Renderer, mapRenderTexture);
+    SDL_RenderCopy(SDLGlobals.Renderer, tileSetTexture, &srcRect, &destRect);
+    SDL_SetRenderTarget(SDLGlobals.Renderer, nullptr);
+}
+
+// try and draw a window, return the rectangle that it drew
+// draw the tileset underneath it in red, draw the area it rendered in white maybe
+SDL_Rect DrawTiles(SDL_Texture* mapRenderTexture, SDL_Texture* tileSetTexture, const IntVec2_t& topLeftTile, const IntVec2_t& topLeftOfTileToWindow_px, const IntVec2_t& windowSize_Tiles, const IntVec2_t& mapSize_Tiles)
+{ 
+    // if the window is shifted right or down in the tile it's in, you'll have to render one extra tile to the east / south
+    IntVec2_t renderNextOffset = {0,0};
+
+    if(topLeftOfTileToWindow_px.X > 0)
+    {
+        renderNextOffset.X = 1;
+    }
+
+    if(topLeftOfTileToWindow_px.Y > 0)
+    {
+        renderNextOffset.Y = 1;
+    }
+
+
+    int maxEast = min(mapSize_Tiles.X - 1, topLeftTile.X + windowSize_Tiles.X + renderNextOffset.X);
+    int maxSouth = min(mapSize_Tiles.Y - 1, topLeftTile.Y + windowSize_Tiles.Y + renderNextOffset.Y);
+
+    int minWest = max(0, topLeftTile.X);
+    int minNorth = max(0, topLeftTile.Y);
+
+    int validRows = 0;
+    int validColumns = 0;
+
+    
+    for(int rowIndex = topLeftTile.Y; rowIndex <= (topLeftTile.Y + windowSize_Tiles.Y); rowIndex++)
+    {
+        if(!InRange(minNorth, rowIndex, maxSouth))
+        {
+            continue; 
+        }
+
+        int oldValidColumns = validColumns;
+        
+        if(oldValidColumns != 0)
+        {
+            // should not change shape from one row to the next
+            assert(oldValidColumns == validColumns);
+        }
+
+        validColumns = 0;
+        // look 1 past the size, otherwise if you're in the middle of tile 1,
+        // 1 + 2,  < 3, stop at tile 2
+        for(int columnIndex = topLeftTile.X; columnIndex <= (topLeftTile.X + windowSize_Tiles.X); columnIndex++)
+        {
+            if(!InRange(minWest, columnIndex, maxEast))
+            {
+                continue;
+            }
+
+            IntVec2_t mapCoordinate_Tiles = {columnIndex, rowIndex};
+            IntVec2_t textureCoordinate_Tiles = {validColumns, validRows};
+            DEMO_DrawTile(mapRenderTexture, tileSetTexture, mapCoordinate_Tiles, textureCoordinate_Tiles);
+
+            validColumns++;
+        }
+
+        // don't count the row if it contained zero valid columns
+        if(validColumns != 0)
+        {
+            validRows++;
+        }
+    }
+
+    SDL_Rect resultRect = {0};
+    resultRect.w = validColumns * cGridSize_px;
+    resultRect.h = validRows * cGridSize_px;
+    resultRect.x = minWest * cGridSize_px;
+    resultRect.y = minNorth * cGridSize_px;
+
+    return resultRect;
+}
+
 void DoBasicTests()
 {
     constexpr IntVec2_t cWindowSize_px = {50, 50};
-    constexpr IntVec2_t cMapSize = {100, 100};
+    constexpr IntVec2_t cMapSize_Tiles = {100, 100};
 
     constexpr IntVec2_t allInPoint = {20, 20};
     constexpr IntVec2_t allOutPoint = {200, 200};
@@ -406,15 +594,15 @@ void DoBasicTests()
     constexpr IntVec2_t southWestPoint  = {-20, 80};
     constexpr IntVec2_t westPoint       = {-20, 25};
 
-    SDL_Rect northWestArea = GetMapRenderRectangle(cMapSize, northWestPoint, cWindowSize_px);
-    SDL_Rect northArea = GetMapRenderRectangle(cMapSize, northPoint, cWindowSize_px);
-    SDL_Rect northEastArea = GetMapRenderRectangle(cMapSize, northEastPoint, cWindowSize_px);
-    SDL_Rect eastArea = GetMapRenderRectangle(cMapSize, eastPoint, cWindowSize_px);
+    SDL_Rect northWestArea = GetMapRenderRectangle(cMapSize_Tiles, northWestPoint, cWindowSize_px);
+    SDL_Rect northArea = GetMapRenderRectangle(cMapSize_Tiles, northPoint, cWindowSize_px);
+    SDL_Rect northEastArea = GetMapRenderRectangle(cMapSize_Tiles, northEastPoint, cWindowSize_px);
+    SDL_Rect eastArea = GetMapRenderRectangle(cMapSize_Tiles, eastPoint, cWindowSize_px);
 
-    SDL_Rect southEastArea = GetMapRenderRectangle(cMapSize, southEastPoint, cWindowSize_px);
-    SDL_Rect southArea = GetMapRenderRectangle(cMapSize, southPoint, cWindowSize_px);
-    SDL_Rect southWestArea = GetMapRenderRectangle(cMapSize, southWestPoint, cWindowSize_px);
-    SDL_Rect westArea = GetMapRenderRectangle(cMapSize, westPoint, cWindowSize_px);
+    SDL_Rect southEastArea = GetMapRenderRectangle(cMapSize_Tiles, southEastPoint, cWindowSize_px);
+    SDL_Rect southArea = GetMapRenderRectangle(cMapSize_Tiles, southPoint, cWindowSize_px);
+    SDL_Rect southWestArea = GetMapRenderRectangle(cMapSize_Tiles, southWestPoint, cWindowSize_px);
+    SDL_Rect westArea = GetMapRenderRectangle(cMapSize_Tiles, westPoint, cWindowSize_px);
 
     /*
         (gdb) call northWestArea
@@ -434,6 +622,8 @@ void DoBasicTests()
         (gdb) call westArea
         $8 = {x = 0, y = 25, w = 30, h = 50}
     */
+
+   
 }
 
 
@@ -601,45 +791,6 @@ IntVec2_t GetDrawRenderOffset(const SDL_Rect& srcFromRenderRect, const IntVec2_t
         }
         
     }
-}
-
-static inline void CheckArea(const SDL_Rect& offset, const IntVec2_t& windowSize)
-{
-    assert(offset.x >= 0);
-    assert(offset.y >= 0);
-    assert(offset.w >= 0);
-    assert(offset.h >= 0);
-
-    assert(offset.x < windowSize.X);
-    assert(offset.y < windowSize.Y);
-    assert(offset.w <= windowSize.X);
-    assert(offset.h <= windowSize.Y);
-
-}
-
-int max(int a, int b)
-{
-    if(a > b)
-    {
-        return a;
-    }
-    else
-    {
-        return b;
-    }
-}
-
-int min(int a, int b)
-{
-    if(a < b)
-    {
-        return a;
-    }
-    else
-    {
-        return b;        
-    }
-    
 }
 
 // Returns a rectangle showing the area to copy from, to get all of the useful pixels rendered from the map that would be in the player's view
@@ -814,7 +965,7 @@ IntVec2_t FindGridCoordinateForPoint(IntVec2_t point, int gridSize)
 }
 
 
-SDL_Rect RenderMapRegion(SDL_Texture* mapRenderTexture, const IntVec2_t& northWestTile, const IntVec2_t southEastTile, const IntVec2_t& mapSize_px)
+SDL_Rect RenderMapRegion(SDL_Texture* mapRenderTexture, SDL_Texture* tileSetTexture, const IntVec2_t& northWestTile, const IntVec2_t& topLeftOfTileToWindow_px, const IntVec2_t& windowSize_Tiles, const IntVec2_t& mapSize_tiles)
 {
     SDL_SetRenderTarget(SDLGlobals.Renderer, mapRenderTexture);
 
@@ -832,39 +983,10 @@ SDL_Rect RenderMapRegion(SDL_Texture* mapRenderTexture, const IntVec2_t& northWe
     // I'm not going to do that in this demo, I'm just going to use a pre-rendered map texture. In this demo the map is already "rendered" in full.
     // I just want to focus on the geometry of what's visible, so this example does not show the code for tiles and their tile pictures.
 
-    // DEMO ONLY
-    {
-        int eastExtent_Clamped = min((southEastTile.X ) * cGridSize_px, mapSize_px.X);
-        int southExtent_Clamped = min((southEastTile.Y)* cGridSize_px, mapSize_px.Y);
-        int northExtent_Clamped = max(northWestTile.Y * cGridSize_px, 0);
-        int westExtent_Clamped = max(northWestTile.X * cGridSize_px, 0);
+    SDL_Rect renderedArea = DrawTiles(mapRenderTexture, tileSetTexture, northWestTile, topLeftOfTileToWindow_px, windowSize_Tiles, mapSize_tiles);
 
-        const IntVec2_t northWest_Clamped = {westExtent_Clamped, northExtent_Clamped};
+    return renderedArea;
 
-        const IntVec2_t dimensions_Clamped = {eastExtent_Clamped - westExtent_Clamped, southExtent_Clamped - northExtent_Clamped};
-
-        SDL_Rect mapSourceRectangle = {0};
-        mapSourceRectangle.x = northWest_Clamped.X;
-        mapSourceRectangle.y = northWest_Clamped.Y;
-        mapSourceRectangle.w = dimensions_Clamped.X;
-        mapSourceRectangle.h = dimensions_Clamped.Y;
-
-        SDL_Rect renderRectangle = {0};
-        renderRectangle.x = 0;
-        renderRectangle.y = 0;
-        renderRectangle.w = mapSourceRectangle.w;
-        renderRectangle.h = mapSourceRectangle.h;
-
-        // this line would definitely not be in a real game
-        SDL_RenderCopy(SDLGlobals.Renderer, MapTestTexture, &mapSourceRectangle, &renderRectangle);
-
-        // debug: draw a red line around the part of the texture that's been copied in
-        //DrawWindowRegion(dimensions_Clamped, {0, 0}, {255, 0, 0});
-
-        SDL_SetRenderTarget(SDLGlobals.Renderer, nullptr);
-
-        return renderRectangle;
-    }
 }
 
 IntVec2_t DEMO_TextureWindowRegion_RelToTexture(const IntVec2_t& relToMap_WindowTopLeft)
@@ -881,16 +1003,16 @@ IntVec2_t DEMO_TextureWindowRegion_RelToTexture(const IntVec2_t& relToMap_Window
     return topLeftOfTextureToRegionTopLeft;
 }
 
-SDL_Rect RenderMapToTexture(SDL_Texture* mapRenderTexture, const IntVec2_t& windowSize, const IntVec2_t& relToMap_WindowTopLeft)
+SDL_Rect RenderMapToTexture(SDL_Texture* mapRenderTexture, SDL_Texture* tileSetTexture, const IntVec2_t& windowSize_Tiles, const IntVec2_t& relToMap_WindowTopLeft)
 {
     const IntVec2_t gridCoordOfWindow_TopLeft = FindGridCoordinateForPoint(relToMap_WindowTopLeft, cGridSize_px);
 
-    const IntVec2_t windowBottomRight = {relToMap_WindowTopLeft.X + windowSize.X, relToMap_WindowTopLeft.Y + windowSize.Y};
-    // if there's even one pixel of the window partially in a tile to the right, that whole tile should be rendered
-    const IntVec2_t gridCoordOfWindow_BottomRight = FindGridCoordinateForPoint_RoundUp(windowBottomRight, cGridSize_px);
+    const IntVec2_t coordOfTopLeftOfEnclosingGrid_px = {gridCoordOfWindow_TopLeft.X * cGridSize_px, gridCoordOfWindow_TopLeft.Y * cGridSize_px};
+
+    const IntVec2_t topLeftOfTileToWindow_px = {relToMap_WindowTopLeft.X - coordOfTopLeftOfEnclosingGrid_px.X, relToMap_WindowTopLeft.Y - coordOfTopLeftOfEnclosingGrid_px.Y};
 
     // render the part of the map the player can see to a texture
-    SDL_Rect renderedRectangle = RenderMapRegion(mapRenderTexture, gridCoordOfWindow_TopLeft, gridCoordOfWindow_BottomRight, MapTextureSize);
+    SDL_Rect renderedRectangle = RenderMapRegion(mapRenderTexture, tileSetTexture, gridCoordOfWindow_TopLeft, topLeftOfTileToWindow_px, windowSize_Tiles, cMapSize_Tiles);
 
     return renderedRectangle;
 
@@ -934,15 +1056,18 @@ void CopyRenderedMapToScreen(SDL_Texture* screenRenderTexture, SDL_Texture* mapR
 }
 
 // Render what a simulated window would see, if its top left corner were placed at a certain position in the map
-void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTexture, const IntVec2_t& windowSize, const IntVec2_t& windowTopLeft_px, const IntVec2_t& mapTexRenderPoint, const IntVec2_t& screenRenderPoint)
+void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTexture, SDL_Texture* tileSetTexture, const IntVec2_t& windowSize_Tiles, const IntVec2_t& windowTopLeft_px, const IntVec2_t& mapTexRenderPoint, const IntVec2_t& screenRenderPoint)
 {
+    
+    const IntVec2_t windowSize_px = {windowSize_Tiles.X * cGridSize_px, windowSize_Tiles.Y * cGridSize_px};
+
     // This variable is probably only important for the sake of this demo, if this were in a real game, you would pass in windowTopLeft
     // that was already relative to the top of the map, but since this demo contains more than one render window case, we have to do this offset.
     //
     // Though maybe this would be useful outside of this demo, if you wanted to offset where the map was drawn
     const IntVec2_t relToMap_WindowTopLeft = {windowTopLeft_px.X - cMapOrigin.X, windowTopLeft_px.Y- cMapOrigin.Y };
 
-    SDL_Rect mapTextureRenderedRectangle = RenderMapToTexture(mapRenderTexture, windowSize, relToMap_WindowTopLeft);
+    SDL_Rect mapTextureRenderedRectangle = RenderMapToTexture(mapRenderTexture, tileSetTexture, windowSize_Tiles, relToMap_WindowTopLeft);
 
     // DEMO ONLY: for the sake of visualization, render the contents of the rendered map texture to the screen, this would not be done in a real game
     {
@@ -962,16 +1087,16 @@ void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTextur
         const IntVec2_t topLeftOfTextureToRegionTopLeft = DEMO_TextureWindowRegion_RelToTexture(relToMap_WindowTopLeft);        
         const IntVec2_t windowTopLeft_InMapTexture = {mapTexRenderPoint.X + topLeftOfTextureToRegionTopLeft.X, mapTexRenderPoint.Y + topLeftOfTextureToRegionTopLeft.Y};
 
-        const WindowIntersectType_t intersectType = GetWindowIntersectType(MapTextureSize, relToMap_WindowTopLeft, windowSize);
+        const WindowIntersectType_t intersectType = GetWindowIntersectType(MapTextureSize, relToMap_WindowTopLeft, windowSize_px);
 
         // but don't draw the region if the region's completely outside of the map, the offset won't make any sense
         if(intersectType != WindowIntersectType_t::TotallyOut)
         {
-            DEMO_DrawWindowRegion(windowSize, windowTopLeft_InMapTexture);
+            DEMO_DrawWindowRegion(windowSize_px, windowTopLeft_InMapTexture);
         }
     }
 
-    CopyRenderedMapToScreen(screenRenderTexture, mapRenderTexture, relToMap_WindowTopLeft, windowSize, mapTextureRenderedRectangle);
+    CopyRenderedMapToScreen(screenRenderTexture, mapRenderTexture, relToMap_WindowTopLeft, windowSize_px, mapTextureRenderedRectangle);
 
     // DEMO ONLY: now copy the part of the mapRenderTexture that contains the map onto the screen (with an orangish background behind it)
     {
@@ -980,8 +1105,8 @@ void RenderWindow(SDL_Texture* screenRenderTexture, SDL_Texture* mapRenderTextur
         SDL_Rect screenRenderRect = {0};
         screenRenderRect.x = screenRenderPoint.X;
         screenRenderRect.y = screenRenderPoint.Y;
-        screenRenderRect.w = windowSize.X;
-        screenRenderRect.h = windowSize.Y;
+        screenRenderRect.w = windowSize_px.X;
+        screenRenderRect.h = windowSize_px.Y;
 
         SDL_RenderCopy(SDLGlobals.Renderer, screenRenderTexture, nullptr, &screenRenderRect);
     
@@ -995,7 +1120,7 @@ void Render(void)
     SDL_SetRenderDrawColor(SDLGlobals.Renderer, 0, 40, 60, 255);
     SDL_RenderClear(SDLGlobals.Renderer);
 
-    // Draw the "map"
+    // Draw the whole map (would not be used in a real game)
     DrawTexture(MapTestTexture, MapTextureSize, cMapOrigin);
 
     // in absolute pixels from the top left of our real 1024x768 screen
@@ -1029,21 +1154,21 @@ void Render(void)
     // Draw what these windows would see
     // note: I had trouble getting the exact coordinates of the upper left hand corners of these regions, may be off by +/- 1 px from what's in layout.xcf
 
-    //          screen texture (orange)             map render texture (cyan)       window size     region position     map texture render position     screen texture render position
-    RenderWindow(ScreenRenderTextures.NorthWest,    MapRenderTextures.NorthWest,    cWindowSize_px, northWestRegion,    {356, 244},                     {301, 192});
-    RenderWindow(ScreenRenderTextures.North,        MapRenderTextures.North,        cWindowSize_px, northRegion,        {476, 245},                     {474, 170});
-    RenderWindow(ScreenRenderTextures.NorthEast,    MapRenderTextures.NorthEast,    cWindowSize_px, northEastRegion,    {580, 265},                     {649, 208});
-    RenderWindow(ScreenRenderTextures.East,         MapRenderTextures.East,         cWindowSize_px, eastRegion,         {606, 359},                     {686, 357});
+    //          screen texture (orange)             map render texture (cyan)       tileset         window size        region position     map texture render position     screen texture render position
+    RenderWindow(ScreenRenderTextures.NorthWest,    MapRenderTextures.NorthWest,    MapTestTexture, cWindowSize_Tiles, northWestRegion,    {356, 244},                     {301, 192});
+    RenderWindow(ScreenRenderTextures.North,        MapRenderTextures.North,        MapTestTexture, cWindowSize_Tiles, northRegion,        {476, 245},                     {474, 170});
+    RenderWindow(ScreenRenderTextures.NorthEast,    MapRenderTextures.NorthEast,    MapTestTexture, cWindowSize_Tiles, northEastRegion,    {580, 265},                     {649, 208});
+    RenderWindow(ScreenRenderTextures.East,         MapRenderTextures.East,         MapTestTexture, cWindowSize_Tiles, eastRegion,         {606, 359},                     {686, 357});
 
-    RenderWindow(ScreenRenderTextures.SouthEast,    MapRenderTextures.SouthEast,    cWindowSize_px, southEastRegion,    {595, 481},                     {651, 537});
-    RenderWindow(ScreenRenderTextures.South,        MapRenderTextures.South,        cWindowSize_px, southRegion,        {468, 491},                     {469, 592});
-    RenderWindow(ScreenRenderTextures.SouthWest,    MapRenderTextures.SouthWest,    cWindowSize_px, southWestRegion,    {361, 464},                     {316, 525});
-    RenderWindow(ScreenRenderTextures.West,         MapRenderTextures.West,         cWindowSize_px, westRegion,         {323, 358},                     {271, 410});
+    RenderWindow(ScreenRenderTextures.SouthEast,    MapRenderTextures.SouthEast,    MapTestTexture, cWindowSize_Tiles, southEastRegion,    {595, 481},                     {651, 537});
+    RenderWindow(ScreenRenderTextures.South,        MapRenderTextures.South,        MapTestTexture, cWindowSize_Tiles, southRegion,        {468, 491},                     {469, 592});
+    RenderWindow(ScreenRenderTextures.SouthWest,    MapRenderTextures.SouthWest,    MapTestTexture, cWindowSize_Tiles, southWestRegion,    {361, 464},                     {316, 525});
+    RenderWindow(ScreenRenderTextures.West,         MapRenderTextures.West,         MapTestTexture, cWindowSize_Tiles, westRegion,         {323, 358},                     {271, 410});
 
-    RenderWindow(ScreenRenderTextures.AllIn,        MapRenderTextures.AllIn,        cWindowSize_px, allInRegion,        {164, 278},                     {82, 294});
-    RenderWindow(ScreenRenderTextures.AllOut,       MapRenderTextures.AllOut,       cWindowSize_px, allOutRegion,       {164, 337},                     {81, 334});
+    RenderWindow(ScreenRenderTextures.AllIn,        MapRenderTextures.AllIn,        MapTestTexture, cWindowSize_Tiles, allInRegion,        {164, 278},                     {82, 294});
+    RenderWindow(ScreenRenderTextures.AllOut,       MapRenderTextures.AllOut,       MapTestTexture, cWindowSize_Tiles, allOutRegion,       {164, 337},                     {81, 334});
 
-    RenderWindow(ScreenRenderTextures.AllOut,       MapRenderTextures.AllOut,       cWindowSize_px, MousePosition,      {770, 255},                     {777, 323});
+    RenderWindow(ScreenRenderTextures.AllOut,       MapRenderTextures.AllOut,       MapTestTexture, cWindowSize_Tiles, MousePosition,      {770, 255},                     {777, 323});
 
     SDL_RenderPresent(SDLGlobals.Renderer);
 }
